@@ -1,4 +1,5 @@
 import socket, sys , struct, time
+import uuid
 
 ETH_P_ALL = 0x0003
 
@@ -17,12 +18,12 @@ def checksum(msg):
 def send_advertisement(mac_dest, mac_source, ip_dest, ip_source):
     # Create socket
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.getprotobyname("icmp"))
+        s = socket.socket(socket.AF_INET6, socket.SOCK_RAW, socket.getprotobyname("icmp"))
     except OSError as msg:
         print('Error'+str(msg))
         sys.exit(1)
 
-    s.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
+    # s.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
    
     
 
@@ -31,35 +32,44 @@ def send_advertisement(mac_dest, mac_source, ip_dest, ip_source):
     icmp_type = 134
     icmp_code = 0
     icmp_checksum = 0
-    icmp_payload = b'routeradvertisement'
-    icmp_identifier = 12
-    icmp_seqnumber = 0
+    icmp_hop_limit = 255
+    icmp_autoconfig = 0
+    icmp_lifetime = 5
+    icmp_reachable = 1000
+    icmp_retrans = 1000
 
-    icmp_header = struct.pack("!BBHHH%ds" %len(icmp_payload), icmp_type, icmp_code, icmp_checksum,icmp_identifier, icmp_seqnumber, icmp_payload)
+
+
+    icmp_header = struct.pack("!BBHBBHLL"  , icmp_type, icmp_code, icmp_checksum,icmp_hop_limit, icmp_autoconfig, icmp_lifetime, icmp_reachable, icmp_retrans)
     icmp_checksum = checksum(icmp_header)
-    icmp_header = struct.pack("!BBHHH%ds" %len(icmp_payload), icmp_type, icmp_code, icmp_checksum,icmp_identifier, icmp_seqnumber, icmp_payload)
+    icmp_header = struct.pack("!BBHBBHLL"  , icmp_type, icmp_code, icmp_checksum,icmp_hop_limit, icmp_autoconfig, icmp_lifetime, icmp_reachable, icmp_retrans)
+    
     
     
     ip_ver = 6
     # ip_tc = 0
     # ip_fl = 0
-    ip_f4 = (ip_ver << 28)
+    ip_f4 = (ip_ver << 4)
     ip_payload_length = len(icmp_header) 
     ip_next_header = 58
     ip_hop_limit = 3
     ip_saddr = ip_source
     ip_daddr = ip_dest
 
-    ip_header = struct.pack("!LHBB16s16s", ip_f4, ip_payload_length, ip_next_header, ip_hop_limit, ip_saddr,ip_daddr)
+    ip_header = struct.pack("!BBHHBB16s16s", ip_f4, 255, 255, ip_payload_length, ip_next_header, ip_hop_limit, ip_saddr,ip_daddr)
+
+    mac=uuid.UUID(int = uuid.getnode()).hex[-12:] 
+    mac_byte = bytes.fromhex(mac)
 
     eth_type = 0x86dd
-    eth = struct.pack("!6s6sH",mac_dest, mac_source, eth_type)
+    eth = struct.pack("!6s6sH",mac_dest, mac_byte, eth_type)
 
-    
-    
+   
+
 
     ip_addr_str = socket.inet_ntop(socket.AF_INET6, ip_dest)
     addr = socket.getaddrinfo(ip_addr_str, 0)
+    
     s.sendto(eth + ip_header + icmp_header, (addr[0][4][0],0))
 
 # [('<AddressFamily.AF_INET6: 10>', '<SocketKind.SOCK_STREAM: 1>', 6, '', ('fe80::200:ff:feaa:3', 0, 0, 0)), 
@@ -84,6 +94,7 @@ while True:
     eth = struct.unpack("!6s6sH",eth_header)
     mac_dest = eth[0]
     mac_source = eth[1]
+    
 
     if eth[2] != 0x86dd:
     	continue
