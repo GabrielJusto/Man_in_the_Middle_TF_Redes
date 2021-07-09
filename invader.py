@@ -2,6 +2,72 @@ import socket, sys , struct, time
 
 ETH_P_ALL = 0x0003
 
+def checksum(msg):
+    s = 0
+    # add padding if not multiple of 2 (16 bits)
+    msg = (msg + b'\x00') if len(msg)%2 else msg
+    for i in range(0, len(msg), 2):
+        w = msg[i] + (msg[i+1] << 8)
+        s = s + w
+        s = (s & 0xffff) + (s >> 16)
+    s = ~s & 0xffff
+    return socket.ntohs(s)
+
+
+def send_advertisement(mac_dest, mac_source, ip_dest, ip_source):
+    # Create socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.getprotobyname("icmp"))
+    except OSError as msg:
+        print('Error'+str(msg))
+        sys.exit(1)
+
+    s.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
+   
+    
+
+   
+    #Header para o icmpv6 router solicitation
+    icmp_type = 134
+    icmp_code = 0
+    icmp_checksum = 0
+    icmp_payload = b'routeradvertisement'
+    icmp_identifier = 12
+    icmp_seqnumber = 0
+
+    icmp_header = struct.pack("!BBHHH%ds" %len(icmp_payload), icmp_type, icmp_code, icmp_checksum,icmp_identifier, icmp_seqnumber, icmp_payload)
+    icmp_checksum = checksum(icmp_header)
+    icmp_header = struct.pack("!BBHHH%ds" %len(icmp_payload), icmp_type, icmp_code, icmp_checksum,icmp_identifier, icmp_seqnumber, icmp_payload)
+    
+    
+    ip_ver = 6
+    # ip_tc = 0
+    # ip_fl = 0
+    ip_f4 = (ip_ver << 28)
+    ip_payload_length = len(icmp_header) 
+    ip_next_header = 58
+    ip_hop_limit = 3
+    ip_saddr = ip_source
+    ip_daddr = ip_dest
+
+    ip_header = struct.pack("!LHBB16s16s", ip_f4, ip_payload_length, ip_next_header, ip_hop_limit, ip_saddr,ip_daddr)
+
+    eth_type = 0x86dd
+    eth = struct.pack("!6s6sH",mac_dest, mac_source, eth_type)
+
+    
+    
+
+    ip_addr_str = socket.inet_ntop(socket.AF_INET6, ip_dest)
+    addr = socket.getaddrinfo(ip_addr_str, 0)
+    s.sendto(eth + ip_header + icmp_header, (addr[0][4][0],0))
+
+# [('<AddressFamily.AF_INET6: 10>', '<SocketKind.SOCK_STREAM: 1>', 6, '', ('fe80::200:ff:feaa:3', 0, 0, 0)), 
+# ('<AddressFamily.AF_INET6: 10>', '<SocketKind.SOCK_DGRAM: 2>', 17, '', ('fe80::200:ff:feaa:3', 0, 0, 0)), 
+# ('<AddressFamily.AF_INET6: 10>', '<SocketKind.SOCK_RAW: 3>', 0, '', ('fe80::200:ff:feaa:3', 0, 0, 0))]
+
+
+
 try:
     s = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(ETH_P_ALL))
 except OSError as msg:
@@ -16,6 +82,8 @@ while True:
     eth_length = 14
     eth_header = packet[:14]
     eth = struct.unpack("!6s6sH",eth_header)
+    mac_dest = eth[0]
+    mac_source = eth[1]
 
     if eth[2] != 0x86dd:
     	continue
@@ -52,11 +120,12 @@ while True:
             icmp_seqnumber = icmph[4]
             icmp_payload = icmph[5]
             
-
+            print(icmp_type)
             if icmp_type == 133:
+                print("ROUTER REQUEST")
+                send_advertisement(mac_source, mac_dest, ip_saddr, ip_daddr)
+
+
 
             
 
-
-
-        
